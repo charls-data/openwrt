@@ -420,17 +420,30 @@ class Build:
         triple = self.run(compiler, "-dumpmachine", capture=True, env=compiler_env).strip()
         require(triple == "x86_64-openwrt-linux-musl", f"Unexpected compiler target: {triple}")
         tc = compiler.parent.parent
-        for name in ["libgfortran.so", "libgomp.so", "libquadmath.so"]:
+        for name in ["libc.so", "libgcc_s.so.1", "libgfortran.so", "libgomp.so", "libquadmath.so"]:
             require((tc / "lib" / name).exists(), f"Missing toolchain runtime: {name}")
         include = tc / f"lib/gcc/{triple}/{version}"
         for name in ["include/omp.h", "include/quadmath.h", "finclude/omp_lib.mod", "finclude/openacc.mod"]:
             require((include / name).is_file(), f"Missing toolchain development file: {name}")
-        # Static x86_64/musl executable runs on the Ubuntu x86_64 kernel without
-        # borrowing the runner's glibc or OpenMP runtime.
+        # Match the shared runtimes shipped in the APKs. Forcing -static here
+        # can leave libgfortran's _Unwind_* references unresolved in OpenWrt.
+        # musl's libc.so is also its loader: invoke it explicitly because the
+        # Ubuntu runner has no target /lib/ld-musl-x86_64.so.1 interpreter.
         executable = tree / "fortran-smoke"
-        self.run(compiler, "-O2", "-static", "-fopenmp", ROOT / "tests/fortran-openmp.f90", "-o", executable, env=compiler_env)
-        self.run(executable, env={**os.environ, "OMP_NUM_THREADS": "2"})
-        write_json(self.out / f"metadata/{tree.name}-toolchain.json", {"gcc_version": version, "target": triple})
+        self.run(compiler, "-O2", "-fopenmp", ROOT / "tests/fortran-openmp.f90", "-o", executable, env=compiler_env)
+        loader = tc / "lib/libc.so"
+        library_path = tc / "lib"
+        runtime_env = {key: value for key, value in os.environ.items()
+                       if key not in ("LD_LIBRARY_PATH", "LD_PRELOAD")}
+        runtime_env.update({"OMP_NUM_THREADS": "2", "OMP_DYNAMIC": "FALSE"})
+        # Keep the resolved library paths in the build log for diagnosis.
+        self.run(loader, "--library-path", library_path, "--list", executable, env=runtime_env)
+        self.run(loader, "--library-path", library_path, executable, env=runtime_env)
+        write_json(self.out / f"metadata/{tree.name}-toolchain.json", {
+            "gcc_version": version, "target": triple, "smoke_test": "dynamic-musl",
+            "loader": str(loader.relative_to(tree)), "library_path": str(library_path.relative_to(tree)),
+            "passed": True,
+        })
 
     def third_party(self, groups):
         recipes = merge_recipes(groups)

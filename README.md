@@ -106,12 +106,14 @@ IPv6 和 WireGuard 的翻译归入 [LuCI base 翻译目录](https://github.com/o
 此任务根据 `Build.md` 重建补丁，而不是依赖未保存的本地 Makefile：
 
 1. 检出锁定的官方 OpenWrt 源码，启用 cross GFortran 与 libgomp，构建工具链。
-2. 编译并运行静态链接的 Fortran/OpenMP/REAL(16) 测试，检查工具链头文件、runtime 和 `.mod` 文件。
+2. 编译动态链接的 Fortran/OpenMP/REAL(16) 测试，通过工具链自带的 musl 加载器和库目录运行，检查工具链头文件、runtime 和 `.mod` 文件。
 3. 准备 SDK 所需 target/package 环境，导出 SDK，再解压为独立目录验证。
 4. 在导出的 SDK 中构建 core runtime 与 native GCC 的两个附加包。
 5. 按 APK 元数据确认包名、版本与架构，解包检查关键文件、开发链接及本机可执行文件架构。
 
 SDK 准备阶段会构建其所需内核和模块，目的是完成 SDK staging；这些文件不会进入第一个任务生成的固件。
+
+工具链构建后和 SDK 解压后均执行上述冒烟测试。测试使用 `toolchain-*/lib/libc.so --library-path toolchain-*/lib` 加载程序，并在日志中列出解析到的动态库；无需在 Ubuntu runner 的 `/lib` 安装 musl。此前强制 `-static` 的测试会在 libgfortran 回溯代码处出现 `_Unwind_GetIPInfo` / `_Unwind_Backtrace` 未定义引用，因此改用与交付的动态 runtime APK 一致的链接方式。这项检查验证动态链接与运行，未验证全静态链接能力。
 
 交付的五个 APK 为：
 

@@ -1,0 +1,32 @@
+schema_version = 1
+name = "msd-lite"
+enabled = true
+
+# These repositories supply recipes, not firmware or binary repositories.
+# Their exact commits are recorded in sources.lock.json.
+[[sources]]
+name = "immortal-packages"
+url = "https://github.com/immortalwrt/packages.git"
+ref = "master"
+
+[[sources]]
+name = "immortal-luci"
+url = "https://github.com/immortalwrt/luci.git"
+ref = "master"
+
+# A plugin may contain several recipes, compiled in the listed order.
+# workflow input targets=msd-lite selects this complete group.
+[[recipes]]
+source = "immortal-packages"
+path = "net/msd_lite"
+select = ["msd_lite"]
+expected_apk_names = ["msd_lite"]
+
+[[recipes]]
+source = "immortal-luci"
+path = "applications/luci-app-msd_lite"
+luci = true
+languages = ["zh_Hans"]
+select = ["luci-app-msd_lite", "luci-i18n-msd_lite-zh-cn"]
+expected_apk_names = ["luci-app-msd_lite", "luci-i18n-msd_lite-zh-cn"]
+

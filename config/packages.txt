@@ -1,0 +1,62 @@
+# Web / LuCI
+luci
+luci-ssl-openssl
+# Core pages, including network / IPv6 / WireGuard translations.
+luci-i18n-base-zh-cn
+# These apps are pulled in by luci, but their translations are separate APKs.
+luci-i18n-firewall-zh-cn
+luci-i18n-package-manager-zh-cn
+uhttpd
+uhttpd-mod-ubus
+nginx-full
+
+# Native IPv6: LuCI protocol UI, WAN DHCPv6/PD client, LAN DHCPv6/RA service.
+# Keep explicit even though luci / the official target defaults include them.
+luci-proto-ipv6
+odhcp6c
+odhcpd-ipv6only
+
+# Intel I226-V and WireGuard
+kmod-igc
+intel-microcode
+ethtool
+wireguard-tools
+kmod-wireguard
+luci-proto-wireguard
+kmod-tun
+kmod-nft-socket
+kmod-nft-tproxy
+
+# Storage / sharing / printer
+block-mount
+e2fsprogs
+dosfstools
+kmod-fuse
+ksmbd-server
+luci-app-ksmbd
+luci-i18n-ksmbd-zh-cn
+kmod-usb-printer
+
+# SFTP file transfer
+openssh-sftp-server
+openssh-sftp-client
+
+# Containers
+docker
+dockerd
+luci-app-dockerman
+luci-i18n-dockerman-zh-cn
+
+# Native development (custom SDK APKs are installed separately)
+python3
+python3-pip
+python3-setuptools
+python3-dev
+gcc
+make
+bash
+git
+curl
+ca-bundle
+ca-certificates
+

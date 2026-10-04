@@ -1,0 +1,14 @@
+--- a/package/libs/toolchain/Makefile
++++ b/package/libs/toolchain/Makefile
+@@ -515,6 +515,11 @@
+   define Package/libquadmath/install
+ 	$(INSTALL_DIR) $(1)/lib
+ 	$(CP) $(TOOLCHAIN_DIR)/lib/libquadmath.so.* $(1)/lib/
++  endef
++
++  define Package/libgomp/install
++	$(INSTALL_DIR) $(1)/lib
++	$(CP) $(TOOLCHAIN_DIR)/lib/libgomp.so* $(1)/lib/
+   endef
+ 
+   define Package/libgfortran/install

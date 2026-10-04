@@ -1,0 +1,31 @@
+schema_version = 1
+
+[openwrt]
+release = "25.12.5"
+target = "x86"
+subtarget = "64"
+profile = "generic"
+architecture = "x86_64"
+
+[firmware]
+packages_file = "config/packages.txt"
+files_dir = "files"
+rootfs_partsize_mib = 8192
+boot_partsize_mib = 128
+filesystem = "ext4"
+image_type = "combined-efi"
+compression = "gzip"
+extra_image_name = "econwang-charls"
+disabled_services = ["nginx", "dockerd"]
+
+[fortran]
+sdk_config = "config/fortran/sdk.config"
+packages_config = "config/fortran/packages.config"
+required_apk_names = ["libgomp", "libquadmath1", "libgfortran", "gcc-fortran-dev", "gfortran"]
+
+[third_party]
+# Load one or more independent plugin configurations, in build order.
+config_files = [
+  "config/third-party/msd-lite.toml",
+]
+

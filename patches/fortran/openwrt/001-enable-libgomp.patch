@@ -1,0 +1,11 @@
+--- a/toolchain/gcc/common.mk
++++ b/toolchain/gcc/common.mk
+@@ -104,7 +104,7 @@
+ 		--target=$(REAL_GNU_TARGET_NAME) \
+ 		--with-gnu-ld \
+ 		--enable-target-optspace \
+-		--disable-libgomp \
++		--enable-libgomp \
+ 		--disable-libmudflap \
+ 		--disable-multilib \
+ 		--disable-libmpx \

@@ -1,0 +1,54 @@
+--- a/devel/gcc/Makefile
++++ b/devel/gcc/Makefile
+@@ -93,7 +93,7 @@
+ 	REMOVE_STATIC_SPEC=rm /usr/lib/$(PKG_NAME)/$(REAL_GNU_TARGET_NAME)/$(PKG_VERSION)/specs
+ endif
+ 
+-TARGET_LANGUAGES:="c,c++"
++TARGET_LANGUAGES:="c,c++,fortran"
+ BUGURL=https://dev.openwrt.org/
+ PKGVERSION=OpenWrt GCC $(PKG_VERSION)
+ TARGET_CPPFLAGS += -D_GLIBCXX_INCLUDE_NEXT_C_HEADERS
+@@ -182,8 +182,8 @@
+ 			--disable-libmudflap \
+ 			--disable-libmpx \
+ 			--disable-multilib \
+-			--disable-libgomp \
+-			--disable-libquadmath \
++			--enable-libgomp \
++			--enable-libquadmath \
+ 			--disable-libssp \
+ 			--disable-decimal-float \
+ 			--disable-libstdcxx-pch \
+@@ -258,3 +258,31 @@
+ endif
+ 
+ $(eval $(call BuildPackage,gcc))
++
++# Native Fortran additions reconstructed from Build.md.
++# Keep the official gcc package installed on the router; export only the two
++# new packages and the three core runtimes from this build.
++define Package/gcc-fortran-dev
++  SECTION:=devel
++  CATEGORY:=Development
++  TITLE:=GCC Fortran, OpenMP and Quadmath development files
++  DEPENDS:=+gcc +libgomp +libquadmath +libgfortran
++endef
++
++define Package/gfortran
++  SECTION:=devel
++  CATEGORY:=Development
++  TITLE:=GNU Fortran native compiler
++  DEPENDS:=+gcc +gcc-fortran-dev +libgomp +libquadmath +libgfortran
++endef
++
++define Package/gcc-fortran-dev/install
++	$(BASH) $(CURDIR)/files/install-fortran-files.sh dev "$(1)" "$(PKG_INSTALL_DIR)" "$(TOOLCHAIN_DIR)" "$(REAL_GNU_TARGET_NAME)" "$(PKG_VERSION)"
++endef
++
++define Package/gfortran/install
++	$(BASH) $(CURDIR)/files/install-fortran-files.sh compiler "$(1)" "$(PKG_INSTALL_DIR)" "$(TOOLCHAIN_DIR)" "$(REAL_GNU_TARGET_NAME)" "$(PKG_VERSION)"
++endef
++
++$(eval $(call BuildPackage,gcc-fortran-dev))
++$(eval $(call BuildPackage,gfortran))

@@ -1,0 +1,78 @@
+name: Build third-party packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: Build group names, comma-separated; empty builds all enabled groups
+        type: string
+        default: ""
+      jobs:
+        description: Parallel jobs (0 chooses from runner CPU and RAM)
+        type: choice
+        options: ["0", "1", "2", "4"]
+        default: "0"
+      publish_release:
+        description: Also publish this package batch as a permanent GitHub Release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: third-party-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  third-party:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    permissions:
+      contents: write
+    env:
+      TZ: Asia/Shanghai
+      LC_ALL: C.UTF-8
+      BUILD_TARGETS: ${{ inputs.targets }}
+      BUILD_JOBS: ${{ inputs.jobs }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate selection
+        run: python3 scripts/build.py third-party --plan --targets "$BUILD_TARGETS"
+      - name: Prepare runner
+        run: bash scripts/prepare-runner.sh third-party
+      - name: Check build scripts
+        run: bash scripts/check.sh
+      - name: Restore SDK and source downloads
+        id: downloads
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache/openwrt/
+          key: third-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/sources.lock.json') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            third-downloads-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('config/sources.lock.json') }}-
+      - name: Build selected package groups
+        run: bash scripts/build-third-party.sh --targets "$BUILD_TARGETS" --jobs "$BUILD_JOBS"
+      - name: Save downloads
+        if: ${{ success() }}
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .cache/openwrt/
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+      - name: Upload packages and diagnostics
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: third-party-${{ github.run_id }}-${{ github.run_attempt }}
+          path: dist/third-party/
+          if-no-files-found: warn
+          compression-level: 0
+          retention-days: 30
+      - name: Publish release
+        if: ${{ success() && inputs.publish_release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/publish.py third-party
+

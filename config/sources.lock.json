@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "release": "25.12.5",
+  "target": "x86/64",
+  "openwrt": {
+    "url": "https://github.com/openwrt/openwrt.git",
+    "commit": "f0a60eee2fe051741c643ea6118718aae1ef17fb"
+  },
+  "downloads": {
+    "imagebuilder": {
+      "url": "https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-imagebuilder-25.12.5-x86-64.Linux-x86_64.tar.zst",
+      "sha256": "313221253d9bac534e4a4ee6492a4941b4ba0f43200eceb8d16a4785470ae9df"
+    },
+    "sdk": {
+      "url": "https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/openwrt-sdk-25.12.5-x86-64_gcc-14.3.0_musl.Linux-x86_64.tar.zst",
+      "sha256": "0c8df0151a1e88feb7c03d694d61f6a18d51872815b7c811d76e2b77504d5e9c"
+    }
+  },
+  "feeds": [
+    {"name": "packages", "url": "https://github.com/openwrt/packages.git", "commit": "5caa62e0bc9f7fb9b0c12a23267bceb7724214dd"},
+    {"name": "luci", "url": "https://github.com/openwrt/luci.git", "commit": "128a7812f4be233c5dd7f7466f534fd888785caf"},
+    {"name": "routing", "url": "https://github.com/openwrt/routing.git", "commit": "3d7d0dc7fa43d3eb09498417407e95a6552e5312"},
+    {"name": "telephony", "url": "https://github.com/openwrt/telephony.git", "commit": "2618106d5846a4a542fdf5809f0d3ed228ce439b"},
+    {"name": "video", "url": "https://github.com/openwrt/video.git", "commit": "094bf58da6682f895255a35a84349a79dab4bf95"}
+  ],
+  "third_party": {
+    "immortal-packages": {"url": "https://github.com/immortalwrt/packages.git", "commit": "e731ba76764082d9db71de60f1ddac43f4114101"},
+    "immortal-luci": {"url": "https://github.com/immortalwrt/luci.git", "commit": "5fc1fac5684cac6eee2c7fbff78c65b867980dd8"}
+  }
+}
+

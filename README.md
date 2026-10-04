@@ -113,6 +113,8 @@ IPv6 和 WireGuard 的翻译归入 [LuCI base 翻译目录](https://github.com/o
 
 SDK 准备阶段会构建其所需内核和模块，目的是完成 SDK staging；这些文件不会进入第一个任务生成的固件。
 
+导出 SDK 时直接通过 `BASE_FEED` 固定 OpenWrt 源码仓库和提交。不要只在 `target/sdk/install` 阶段追加 `CONFIG_BUILDBOT=y`：[官方工具链规则](https://github.com/openwrt/openwrt/blob/f0a60eee2fe051741c643ea6118718aae1ef17fb/toolchain/Makefile#L59-L69) 会在缺少或不匹配 `.ver_check` 时清理工具链及 target staging，使随后的内核构建报交叉 GCC 不存在。构建全过程应保持相同模式。
+
 工具链构建后和 SDK 解压后均执行上述冒烟测试。测试使用 `toolchain-*/lib/libc.so --library-path toolchain-*/lib` 加载程序，并在日志中列出解析到的动态库；无需在 Ubuntu runner 的 `/lib` 安装 musl。此前强制 `-static` 的测试会在 libgfortran 回溯代码处出现 `_Unwind_GetIPInfo` / `_Unwind_Backtrace` 未定义引用，因此改用与交付的动态 runtime APK 一致的链接方式。这项检查验证动态链接与运行，未验证全静态链接能力。
 
 交付的五个 APK 为：

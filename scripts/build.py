@@ -380,9 +380,7 @@ class Build:
         self.make(tree, "target/linux/compile", False, download)
         self.make(tree, "package/compile", False, download)
         self.make(tree, "package/install", True, download)
-        # Pin the SDK's exported base feed to GIT_COMMIT, including when this
-        # source checkout is detached and has no locally fetched tag objects.
-        self.make(tree, "target/sdk/install", False, download, "CONFIG_BUILDBOT=y")
+        self.export_sdk(tree, download)
         archives = list((tree / "bin/targets/x86/64").glob("openwrt-sdk-*.tar.zst"))
         require(len(archives) == 1, f"Expected one exported SDK, got {archives}")
         archive = self.out / f"openwrt-sdk-{self.cfg['openwrt']['release']}-x86-64-gfortran-openmp.tar.zst"
@@ -410,6 +408,14 @@ class Build:
         selected = self.collect_apks(sdk, self.cfg["fortran"]["required_apk_names"], dependencies=False)
         self.audit_fortran(sdk, selected)
         shutil.copytree(ROOT / "tests", self.out / "tests", ignore=shutil.ignore_patterns("__pycache__", "test_*.py"))
+
+    def export_sdk(self, tree, download):
+        # Changing CONFIG_BUILDBOT only at export enables OpenWrt's .ver_check
+        # cleanup and deletes the already-built toolchain. Pin only BASE_FEED;
+        # command-line make variables propagate to target/sdk's sub-make.
+        core = self.lock["openwrt"]
+        base_feed = f"src-git --root=package base {core['url']}^{core['commit']}"
+        self.make(tree, "target/sdk/install", False, download, f"BASE_FEED={base_feed}")
 
     def check_toolchain(self, tree):
         compilers = list((tree / "staging_dir").glob("toolchain-*/bin/*-openwrt-linux-musl-gfortran"))

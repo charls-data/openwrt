@@ -334,6 +334,9 @@ class Build:
 
     def firmware(self):
         tree = self.archive("imagebuilder", self.work / "imagebuilder")
+        # The upstream dd padding reads with bs=rootfs size. For large images,
+        # Linux short reads plus conv=sync insert padding between file chunks.
+        self.patch(tree, ROOT / "patches/imagebuilder")
         cfg = self.cfg["firmware"]
         set_config(tree / ".config", {
             "CONFIG_TARGET_KERNEL_PARTSIZE": str(cfg["boot_partsize_mib"]),

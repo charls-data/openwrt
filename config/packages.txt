@@ -16,10 +16,17 @@ luci-proto-ipv6
 odhcp6c
 odhcpd-ipv6only
 
+# Full DNS/DHCP and IP utilities; exclude the smaller variants.
+dnsmasq-full
+-dnsmasq
+ip-full
+-ip-tiny
+
 # Intel I226-V and WireGuard
 kmod-igc
 intel-microcode
-ethtool
+ethtool-full
+-ethtool
 wireguard-tools
 kmod-wireguard
 luci-proto-wireguard
@@ -54,6 +61,11 @@ python3-setuptools
 python3-dev
 gcc
 make
+pkgconf
+patch
+diffutils
+autoconf
+automake
 bash
 git
 curl

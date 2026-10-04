@@ -48,6 +48,7 @@ files/                            # ImageBuilder 根文件系统覆盖文件
 patches/fortran/
   openwrt/                        # cross libgomp 开关与 runtime 安装
   packages/                       # native GCC / GFortran 打包补丁
+patches/imagebuilder/              # 大 rootfs 镜像的填充修复
 scripts/                          # workflow 和本地构建共用入口
 tests/                            # 配置/打包测试，以及 OpenWrt 本机测试程序
 Build.md                          # 原始本地编译记录
@@ -74,11 +75,17 @@ disabled_services = ["nginx", "dockerd"]
 
 启动分区大小写入 ImageBuilder 的 `CONFIG_TARGET_KERNEL_PARTSIZE`。`nginx` 和 `dockerd` 会安装，但默认不启用。固件中的内核与 kmod 来自官方 ImageBuilder 及对应仓库。
 
+ImageBuilder 解压后会应用 `patches/imagebuilder/001-pad-with-truncate.patch`。官方 `Image/pad-to` 使用整个目标大小作为 `dd bs`；8 GiB 文件会因 Linux 单次读取长度限制和 `conv=sync` 被错误填充为 40 GiB。修复用 `truncate` 向上对齐文件长度，保留已有数据，也避免分配巨大复制缓冲区。此问题影响额外生成的单独 `rootfs.img.gz`；EFI combined 镜像由另一条规则读取原始 rootfs。补丁只调整宿主机构建步骤，不修改固件内核或包。
+
 `config/packages.txt` 一行一个包，支持空行、`#` 注释、行尾注释，以及 `-包名` 移除默认包。依赖交给 ImageBuilder 解析，无需手动展开。初始列表来自 `Build.md`。
 
-已显式列出原生 IPv6 所需的 `luci-proto-ipv6`（协议配置界面）、`odhcp6c`（WAN DHCPv6 / 前缀委派客户端）和 `odhcpd-ipv6only`（LAN DHCPv6 / RA 服务）。`luci` 原本会通过 `luci-light` 带入 IPv6 界面；官方 x86/64 默认包也已包含这两个 DHCPv6 组件，以及 `netifd`、`dnsmasq`、`firewall4`、`nftables`。当前配置保留这些默认项，使用官方内核的 IPv6 支持。依据：[LuCI 依赖定义](https://github.com/openwrt/luci/blob/128a7812f4be233c5dd7f7466f534fd888785caf/collections/luci-light/Makefile)、[官方目标默认包](https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/profiles.json)。
+当前列表使用 `dnsmasq-full` / `-dnsmasq`、`ip-full` / `-ip-tiny`、`ethtool-full` / `-ethtool` 三组选择，安装完整版本并排除精简版本；包名前的 `-` 是 ImageBuilder 的移除语法。三种完整版本均在 [25.12.5 x86_64 官方 base 仓库](https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/base/) 中。`dnsmasq-full` 增加 DNSSEC、nftset 等编译支持，具体功能仍按 UCI 配置启用；`ethtool-full` 启用 netlink 和详细解码输出。
 
-这里覆盖常规 IPv4/IPv6 双栈、DHCPv6-PD、SLAAC / RA、LAN DHCPv6 和 IPv6 防火墙。`odhcpd-ipv6only` 的名称表示其不负责 DHCPv4，DHCPv4 仍由 dnsmasq 提供。6in4、DS-Lite 等特殊接入方式按实际线路再加对应后端；公网 IPv6 连通性仍需安装后结合运营商前缀、接口和防火墙配置验证。
+本机开发工具除 GCC、make 和 Python 外，还显式加入 `pkgconf`、`patch`、`diffutils`、`autoconf`、`automake`，来自 [官方 packages 仓库](https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/packages/)，其依赖由 ImageBuilder 自动带入。
+
+已显式列出原生 IPv6 所需的 `luci-proto-ipv6`（协议配置界面）、`odhcp6c`（WAN DHCPv6 / 前缀委派客户端）和 `odhcpd-ipv6only`（LAN DHCPv6 / RA 服务）。`luci` 原本会通过 `luci-light` 带入 IPv6 界面；官方 x86/64 默认包也已包含这两个 DHCPv6 组件，以及 `netifd`、`dnsmasq`、`firewall4`、`nftables`。当前配置将默认的 `dnsmasq` 替换为 `dnsmasq-full`，保留其余上述默认组件，并使用官方内核的 IPv6 支持。依据：[LuCI 依赖定义](https://github.com/openwrt/luci/blob/128a7812f4be233c5dd7f7466f534fd888785caf/collections/luci-light/Makefile)、[官方目标默认包](https://downloads.openwrt.org/releases/25.12.5/targets/x86/64/profiles.json)。
+
+这里覆盖常规 IPv4/IPv6 双栈、DHCPv6-PD、SLAAC / RA、LAN DHCPv6 和 IPv6 防火墙。`odhcpd-ipv6only` 的名称表示其不负责 DHCPv4，DHCPv4 仍由 `dnsmasq-full` 提供。LAN DHCPv6 / RA 继续交给 `odhcpd-ipv6only`，无需因安装 `dnsmasq-full` 而改用 dnsmasq 承担此职责。6in4、DS-Lite 等特殊接入方式按实际线路再加对应后端；公网 IPv6 连通性仍需安装后结合运营商前缀、接口和防火墙配置验证。
 
 LuCI 中文包按功能拆分，已明确加入以下五个：[官方 LuCI 包目录](https://downloads.openwrt.org/releases/25.12.5/packages/x86_64/luci/)。
 

@@ -188,6 +188,8 @@ expected_apk_names = ["luci-app-my-service", "luci-i18n-my-service-zh-cn"]
 
 `select` 对应 `CONFIG_PACKAGE_*`，`expected_apk_names` 使用最终 APK 内部包名，两者可能不同。LuCI 翻译是隐藏配置项，还需通过 `languages` 指定语言；简体中文是 `zh_Hans`，对应包名后缀 `zh-cn`。
 
+脚本将语言开关写为 `CONFIG_LUCI_LANG_zh_Hans=y`，插件包仍选择 `m`。官方 SDK 的 `Config-build.in` 会把原构建中未启用的语言保存为布尔选项，写 `m` 会被 Kconfig 拒绝，导致中文包丢失。配置完成后会同时检查语言开关和所选 APK，并将解析后的配置保存为 `metadata/sdk.config`；即使必需项检查失败，也能从 Artifact 中查看该文件。
+
 workflow 的 `targets` 使用 TOML 内的 `name`，例如 `msd-lite,my-service`；留空时按 `config_files` 顺序构建其中 `enabled = true` 的插件。`enabled = false` 的插件仍可显式选中，但其 TOML 必须已经列入 `config_files`。因此也可以一次登记所有常用插件，以后只改 workflow 输入来选择本次任务。
 
 同一批次共享的 recipe 只导入、编译一次，所选包和语言取并集。来自不同来源却使用相同目录名的 recipe 会提前报错。`--plan` 输出本次选择的插件名称和配置文件，便于运行前确认。

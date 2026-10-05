@@ -321,11 +321,13 @@ class Build:
     def configure(self, tree, values, required=()):
         set_config(tree / ".config", values)
         self.make(tree, "defconfig", True)
+        # Preserve the resolved configuration even if required symbols were
+        # dropped, so the failed run's artifact contains useful diagnostics.
+        shutil.copy2(tree / ".config", self.out / f"metadata/{tree.name}.config")
         actual = fragment_values(tree / ".config")
         for symbol in required:
             require(actual.get(symbol) in ("y", "m"), f"Kconfig dropped required symbol: {symbol}")
         require(actual.get("CONFIG_USE_APK") == "y", "SDK must produce APK packages")
-        shutil.copy2(tree / ".config", self.out / f"metadata/{tree.name}.config")
 
     def download_dir(self, tree):
         directory = self.cache / "dl" / f"{self.cfg['openwrt']['release']}-x86-64"
@@ -488,9 +490,13 @@ class Build:
         values.update({f"CONFIG_PACKAGE_{name}": "m" for name in selects})
         # Translation package symbols are hidden. Kconfig selects them through
         # LUCI_LANG_*; setting only CONFIG_PACKAGE_luci-i18n-* is insufficient.
+        # SDK Config-build.in declares disabled language options as bool, so m
+        # is invalid even though luci.mk declares tristate. Use y for the
+        # language; the translation is still limited by its parent package=m.
         languages = {lang for recipe in recipes for lang in recipe.get("languages", [])}
-        values.update({f"CONFIG_LUCI_LANG_{lang}": "m" for lang in sorted(languages)})
-        self.configure(sdk, values, [f"CONFIG_PACKAGE_{name}" for name in selects])
+        language_symbols = [f"CONFIG_LUCI_LANG_{lang}" for lang in sorted(languages)]
+        values.update({symbol: "y" for symbol in language_symbols})
+        self.configure(sdk, values, language_symbols + [f"CONFIG_PACKAGE_{name}" for name in selects])
         shutil.copytree(sdk / "package/custom", self.out / "metadata/recipes", symlinks=True)
         write_json(self.out / "metadata/selection.json", {"groups": [group["name"] for group in groups],
                    "config_files": [group["config_file"] for group in groups], "recipes": recipes})

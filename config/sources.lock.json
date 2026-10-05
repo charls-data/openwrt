@@ -25,7 +25,8 @@
   ],
   "third_party": {
     "immortal-packages": {"url": "https://github.com/immortalwrt/packages.git", "commit": "e731ba76764082d9db71de60f1ddac43f4114101"},
-    "immortal-luci": {"url": "https://github.com/immortalwrt/luci.git", "commit": "5fc1fac5684cac6eee2c7fbff78c65b867980dd8"}
+    "immortal-luci": {"url": "https://github.com/immortalwrt/luci.git", "commit": "5fc1fac5684cac6eee2c7fbff78c65b867980dd8"},
+    "sbwml-qbittorrent": {"url": "https://github.com/sbwml/luci-app-qbittorrent.git", "commit": "739efe95cf38cdfa956cd1c38ddd9f52358a8c6a"}
   }
 }
 

@@ -1,0 +1,50 @@
+schema_version = 1
+name = "qbittorrent"
+enabled = true
+
+# Keep qBittorrent, Qt6 and libtorrent from the same pinned recipe repository.
+[[sources]]
+name = "sbwml-qbittorrent"
+url = "https://github.com/sbwml/luci-app-qbittorrent.git"
+ref = "master"
+
+[[recipes]]
+source = "sbwml-qbittorrent"
+path = "qt6base"
+select = [
+  "libQt6Core", "libQt6Network", "libQt6Sql", "libQt6Xml",
+  "qt6-plugin-libqopensslbackend", "qt6-plugin-libqsqlite",
+]
+expected_apk_names = [
+  "libQt6Core", "libQt6Network", "libQt6Sql", "libQt6Xml",
+  "qt6-plugin-libqopensslbackend", "qt6-plugin-libqsqlite",
+]
+
+# Linguist tools run on the runner; this recipe produces no target APK.
+[[recipes]]
+source = "sbwml-qbittorrent"
+path = "qt6tools"
+host_only = true
+select = []
+expected_apk_names = []
+
+[[recipes]]
+source = "sbwml-qbittorrent"
+path = "rblibtorrent"
+select = ["rblibtorrent"]
+# ABI_VERSION=2.0 is appended to the package's APK name.
+expected_apk_names = ["rblibtorrent2.0"]
+
+[[recipes]]
+source = "sbwml-qbittorrent"
+path = "qbittorrent"
+select = ["qbittorrent"]
+expected_apk_names = ["qbittorrent"]
+
+[[recipes]]
+source = "sbwml-qbittorrent"
+path = "luci-app-qbittorrent"
+luci = true
+languages = ["zh_Hans"]
+select = ["luci-app-qbittorrent", "luci-i18n-qbittorrent-zh-cn"]
+expected_apk_names = ["luci-app-qbittorrent", "luci-i18n-qbittorrent-zh-cn"]

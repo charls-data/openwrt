@@ -89,16 +89,22 @@ def load_third_party(cfg):
             require(previous is None or previous == source, f"Conflicting source {source['name']} in {filename}: URL and ref must match across plugin files")
             sources[source["name"]] = source
         for recipe in plugin["recipes"]:
-            keys(recipe, ["source", "path", "luci", "languages", "select", "expected_apk_names"], f"recipe in {filename}")
+            keys(recipe, ["source", "path", "luci", "languages", "host_only", "select", "expected_apk_names"], f"recipe in {filename}")
             require(recipe["source"] in local_sources, f"Declare source {recipe['source']} in {filename}")
             repo_path(recipe["path"])
             require(TOKEN.fullmatch(PurePosixPath(recipe["path"]).name), "Invalid recipe directory")
             require(type(recipe.get("luci", False)) is bool, "luci must be boolean")
+            require(type(recipe.get("host_only", False)) is bool, "host_only must be boolean")
             if "languages" in recipe:
                 require(recipe.get("luci"), "languages requires luci = true")
                 names(recipe["languages"], "LuCI languages")
-            names(recipe["select"], "recipe select")
-            names(recipe["expected_apk_names"], "recipe APK names")
+            if recipe.get("host_only"):
+                require(not recipe.get("luci"), "host_only cannot be combined with luci")
+                require(recipe["select"] == [] and recipe["expected_apk_names"] == [],
+                        "host_only recipes must have empty select and expected_apk_names")
+            else:
+                names(recipe["select"], "recipe select")
+                names(recipe["expected_apk_names"], "recipe APK names")
         groups.append({"name": plugin["name"], "enabled": plugin["enabled"],
                        "recipes": plugin["recipes"], "config_file": path.relative_to(ROOT).as_posix()})
     if groups:
@@ -172,12 +178,26 @@ def merge_recipes(groups):
             previous = recipes.get(key)
             require(previous is None or previous.get("luci", False) == recipe.get("luci", False),
                     f"Conflicting luci setting for recipe: {key}")
+            require(previous is None or previous.get("host_only", False) == recipe.get("host_only", False),
+                    f"Conflicting host_only setting for recipe: {key}")
             merged = dict(recipe if previous is None else previous)
             for field in ["select", "expected_apk_names", "languages"]:
                 if field in merged or field in recipe:
                     merged[field] = list(dict.fromkeys([*merged.get(field, []), *recipe.get(field, [])]))
             recipes[key] = merged
     return list(recipes.values())
+
+
+def adapt_luci_makefile(text, version):
+    """Use the official LuCI framework and deterministic imported translations."""
+    include = re.compile(r"^include (?:\.\./\.\./luci\.mk|\$\(TOPDIR\)/feeds/luci/luci\.mk)[ \t]*$", re.MULTILINE)
+    require(len(include.findall(text)) == 1, "Unexpected LuCI recipe include; review integration")
+    # Keep an explicit upstream package version/release when present. Recipes
+    # without one need a fallback because their new location has no Git history.
+    replacement = (f"PKG_VERSION?={version}\nPKG_RELEASE?=1\n"
+                   f"PKG_SRC_VERSION:={version}\nPKG_PO_VERSION:={version}\n\n"
+                   "include $(TOPDIR)/feeds/luci/luci.mk")
+    return include.sub(lambda _: replacement, text)
 
 
 def digest(path):
@@ -461,7 +481,6 @@ class Build:
         for source in sorted(sources):
             paths = sorted({recipe["path"] for recipe in recipes if recipe["source"] == source})
             self.checkout(self.lock["third_party"][source], self.work / "sources" / source, paths)
-        copied = []
         for recipe in recipes:
             source = self.work / "sources" / recipe["source"] / recipe["path"]
             require((source / "Makefile").is_file(), f"Recipe has no Makefile: {source}")
@@ -472,8 +491,6 @@ class Build:
             if recipe.get("luci"):
                 makefile = dest / "Makefile"
                 text = makefile.read_text(encoding="utf-8")
-                require(text.count("include ../../luci.mk") == 1, "Unexpected LuCI recipe include; review integration")
-                text = text.replace("include ../../luci.mk", "include $(TOPDIR)/feeds/luci/luci.mk")
                 # Imported recipes have no Git history at their new path. Supply
                 # a deterministic version instead of inheriting our repo's date.
                 commit = self.lock["third_party"][recipe["source"]]["commit"]
@@ -481,9 +498,7 @@ class Build:
                                      cwd=self.work / "sources" / recipe["source"], capture=True).strip())
                 date = datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y.%m.%d")
                 version = f"{date}~{commit[:12]}"
-                text = text.replace("include $(TOPDIR)/rules.mk", f"include $(TOPDIR)/rules.mk\n\nPKG_VERSION:={version}\nPKG_RELEASE:=1\nPKG_SRC_VERSION:={version}\nPKG_PO_VERSION:={version}")
-                makefile.write_text(text, encoding="utf-8")
-            copied.append(name)
+                makefile.write_text(adapt_luci_makefile(text, version), encoding="utf-8")
         values = {"CONFIG_ALL": "n", "CONFIG_ALL_KMODS": "n", "CONFIG_ALL_NONSHARED": "n",
                   "CONFIG_SIGNED_PACKAGES": "n", "CONFIG_AUTOREMOVE": "n", "CONFIG_BUILD_LOG": "y"}
         selects = sorted({name for recipe in recipes for name in recipe["select"]})
@@ -500,8 +515,10 @@ class Build:
         shutil.copytree(sdk / "package/custom", self.out / "metadata/recipes", symlinks=True)
         write_json(self.out / "metadata/selection.json", {"groups": [group["name"] for group in groups],
                    "config_files": [group["config_file"] for group in groups], "recipes": recipes})
-        for name in copied:
-            self.make(sdk, f"package/custom/{name}/compile", False, self.download_dir(sdk))
+        for recipe in recipes:
+            name = PurePosixPath(recipe["path"]).name
+            target = "host/compile" if recipe.get("host_only") else "compile"
+            self.make(sdk, f"package/custom/{name}/{target}", False, self.download_dir(sdk))
         required = sorted({name for recipe in recipes for name in recipe["expected_apk_names"]})
         self.collect_apks(sdk, required, dependencies=True)
 

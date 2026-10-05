@@ -1,0 +1,28 @@
+schema_version = 1
+name = "vlmcsd"
+enabled = true
+
+# Use the maintained JavaScript LuCI app and matching service integration.
+[[sources]]
+name = "immortal-packages"
+url = "https://github.com/immortalwrt/packages.git"
+ref = "master"
+
+[[sources]]
+name = "immortal-luci"
+url = "https://github.com/immortalwrt/luci.git"
+ref = "master"
+
+[[recipes]]
+source = "immortal-packages"
+path = "net/vlmcsd"
+select = ["vlmcsd"]
+expected_apk_names = ["vlmcsd"]
+
+[[recipes]]
+source = "immortal-luci"
+path = "applications/luci-app-vlmcsd"
+luci = true
+languages = ["zh_Hans"]
+select = ["luci-app-vlmcsd", "luci-i18n-vlmcsd-zh-cn"]
+expected_apk_names = ["luci-app-vlmcsd", "luci-i18n-vlmcsd-zh-cn"]

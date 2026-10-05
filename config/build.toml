@@ -27,5 +27,7 @@ required_apk_names = ["libgomp", "libquadmath1", "libgfortran", "gcc-fortran-dev
 # Load one or more independent plugin configurations, in build order.
 config_files = [
   "config/third-party/msd-lite.toml",
+  "config/third-party/vlmcsd.toml",
+  "config/third-party/qbittorrent.toml",
 ]
 

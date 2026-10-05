@@ -139,6 +139,24 @@ expected_apk_names = ["{name}"]
         with self.assertRaisesRegex(ValueError, "No enabled"):
             build.select_groups(result, "")
 
+    def test_host_tools_do_not_require_target_packages(self):
+        self.plugin("tools.toml", "tools")
+        path = self.root / "tools.toml"
+        text = path.read_text().replace('select = ["tools"]', 'host_only = true\nselect = []')
+        text = text.replace('expected_apk_names = ["tools"]', 'expected_apk_names = []')
+        path.write_text(text)
+        recipe = self.load("tools.toml")["builds"][0]["recipes"][0]
+        self.assertTrue(recipe["host_only"])
+        self.assertEqual(recipe["expected_apk_names"], [])
+        for changed in [text.replace('host_only = true', 'host_only = false'),
+                        text.replace('select = []', 'select = ["tools"]'),
+                        text.replace('expected_apk_names = []', 'expected_apk_names = ["tools"]'),
+                        text.replace('host_only = true', 'host_only = true\nluci = true'),
+                        text.replace('host_only = true', 'host_only = "true"')]:
+            with self.subTest(config=changed), self.assertRaises(ValueError):
+                path.write_text(changed)
+                self.load("tools.toml")
+
 
 class SharedRecipeTests(unittest.TestCase):
     def test_shared_recipe_merges_outputs_without_changing_inputs(self):
@@ -167,6 +185,12 @@ class SharedRecipeTests(unittest.TestCase):
         groups = [{"recipes": [{"source": "a", "path": "net/example", "luci": luci,
                                 "select": ["example"], "expected_apk_names": ["example"]}]} for luci in [False, True]]
         with self.assertRaisesRegex(ValueError, "Conflicting luci setting"):
+            build.merge_recipes(groups)
+
+    def test_shared_recipe_cannot_mix_host_and_target_builds(self):
+        groups = [{"recipes": [{"source": "a", "path": "qt6tools", "host_only": host,
+                                "select": [], "expected_apk_names": []}]} for host in [False, True]]
+        with self.assertRaisesRegex(ValueError, "Conflicting host_only setting"):
             build.merge_recipes(groups)
 
 

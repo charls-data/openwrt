@@ -581,10 +581,15 @@ class Build:
                     f"{base}/include/ISO_Fortran_binding.h", f"{base}/finclude/omp_lib.mod", f"{base}/finclude/openacc.mod",
                     *[f"{base}/include/{name}" for name in ["omp.h", "openacc.h", "quadmath.h", "quadmath_weak.h"]],
                     *[f"usr/lib/{name}" for name in ["libgomp.a", "libquadmath.a", "libgfortran.a", "libcaf_single.a", "libgomp.so", "libgfortran.so"]],
-                    f"{base}/libgomp.so", f"{base}/libgfortran.so",
+                    f"{base}/libgomp.so", f"{base}/libgfortran.so", f"{base}/libpthread.a",
                     f"{base}/libgomp.spec", f"{base}/libgfortran.spec"]
         for name in expected:
             require((root / name).exists(), f"Missing file or broken link in Fortran APKs: {name}")
+        # This target uses musl: pthread symbols live in libc. The SDK archive
+        # is an empty ar container needed only to satisfy the -lpthread option.
+        pthread = root / base / "libpthread.a"
+        require(not pthread.is_symlink() and pthread.read_bytes() == b"!<arch>\n",
+                f"Expected musl's empty pthread compatibility archive: {pthread}")
         for executable in [root / "usr/bin/gfortran", root / base / "f951"]:
             info = self.run("readelf", "-h", executable, capture=True)
             require("Advanced Micro Devices X86-64" in info, f"Wrong native executable architecture: {executable}")
@@ -616,9 +621,12 @@ class Build:
         ]) + "\n", encoding="utf-8")
         # apk add checks ownership/dependencies, unlike extracting all APKs on
         # top of one another. Do not run firmware service/postinstall scripts.
+        # Like OpenWrt's rootfs.mk, disable apk's log file: creating var/log
+        # before base-files installs var -> tmp causes a directory conflict.
+        # Console output is still recorded by self.run in logs/build.log.
         usermode = ["--usermode"] if os.geteuid() != 0 else []
         self.run(apk, "--root", root, "--arch", "x86_64", "--repositories-file", repositories,
-                 "--allow-untrusted", "--no-scripts", "--no-cache", "add", "--initdb", *usermode,
+                 "--allow-untrusted", "--no-scripts", "--no-cache", "--no-logfile", "add", "--initdb", *usermode,
                  "base-files", f"gcc~{version}", "binutils", *selected.values())
         inventory = self.run(apk, "--root", root, "info", "-v", capture=True)
         (self.out / "metadata/fortran-installed-packages.txt").write_text(inventory, encoding="utf-8")

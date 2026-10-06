@@ -39,6 +39,9 @@ class InstallerTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             subprocess.run(["cc", "-x", "c", "-shared", f"-Wl,-soname,{soname}", "-o", str(path), "-"], input="int placeholder;\n", text=True, check=True)
             (self.tc / "lib" / f"{name}.so").symlink_to(soname)
+        # musl's pthread implementation lives in libc; this is the real format
+        # of its empty link-time compatibility archive.
+        (self.tc / "lib/libpthread.a").write_bytes(b"!<arch>\n")
 
     @staticmethod
     def put(path, content="placeholder\n"):
@@ -67,6 +70,11 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((dest / self.gccdir / "libquadmath.so").exists())
         self.assertTrue((dest / self.gccdir / "include/omp.h").is_file())
         self.assertTrue((dest / "usr/lib/libcaf_single.a").is_file())
+        self.assertEqual((dest / self.gccdir / "libpthread.a").read_bytes(), b"!<arch>\n")
+
+    def test_missing_pthread_compatibility_archive_is_fatal(self):
+        (self.tc / "lib/libpthread.a").unlink()
+        self.install("dev", success=False)
 
     def test_linking_works_when_runtime_has_no_section_table(self):
         dest = self.install("dev")

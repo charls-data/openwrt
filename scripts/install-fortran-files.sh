@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Called by the patched native GCC recipe. Compiler/archives come from the
-# native install tree; modules and link-time target DSOs come from the SDK.
+# Called by the patched native GCC recipe. Compiler/Fortran archives come from
+# the native install tree; modules, target DSOs and musl's pthread stub use the SDK.
 set -euo pipefail
 mode=$1
 dest=$2
@@ -50,6 +50,10 @@ case "$mode" in
         for library in libgomp.a libquadmath.a libgfortran.a libcaf_single.a; do
             copy_file "$native/usr" "$library" /usr/lib
         done
+        # musl implements pthreads in libc, but -fopenmp implies -lpthread.
+        # Official gcc omits this compatibility archive by default. Put the
+        # SDK's original archive in the default search path of both compilers.
+        install -m 0644 "$toolchain/lib/libpthread.a" "$dest$gccdir/libpthread.a"
         link_library libgomp
         link_library libgfortran
         # The official gcc dependency already owns the linkable Quadmath DSO.

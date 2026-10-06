@@ -18,6 +18,10 @@ for compiler in gcc gfortran; do
             exit 1
         fi
     done
+    path=$("$compiler" -print-file-name=libpthread.a)
+    printf '%s: libpthread.a -> %s\n' "$compiler" "$path"
+    test "$path" != libpthread.a && test -f "$path"
+    ar t "$path" > /dev/null
 done
 
 check_dynamic() {

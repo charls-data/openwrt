@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Called by the patched native GCC recipe. All binaries come from the target
-# install tree; only compiler-independent Fortran module files come from the SDK.
+# Called by the patched native GCC recipe. Compiler/archives come from the
+# native install tree; modules and link-time target DSOs come from the SDK.
 set -euo pipefail
 mode=$1
 dest=$2
@@ -28,18 +28,15 @@ copy_file() {
     install -m 0644 "$source" "$dest$directory/$name"
 }
 
-runtime_link() {
-    local library=$1 runtime_dir=$2 soname
-    # Read the target runtime's actual SONAME. libquadmath's package ABI suffix
-    # is 1, while its ELF SONAME is normally libquadmath.so.0.
+link_library() {
+    local library=$1 soname
+    # Runtime APKs use sstrip: they can be loaded, but lack the ELF section
+    # table required by ld. Keep a separate, linkable DSO like official gcc.
     soname=$(readelf -d "$toolchain/lib/$library.so" | sed -n 's/.*(SONAME).*\[\([^]]*\)\].*/\1/p')
     [[ "$soname" == "$library.so."* && "$soname" != */* ]]
     test -e "$toolchain/lib/$soname"
-    if [[ "$runtime_dir" == /lib ]]; then
-        ln -s "../../lib/$soname" "$dest/usr/lib/$library.so"
-    else
-        ln -s "$soname" "$dest/usr/lib/$library.so"
-    fi
+    install -m 0644 "$toolchain/lib/$library.so" "$dest$gccdir/$library.so"
+    ln -s "gcc/$triple/$version/$library.so" "$dest/usr/lib/$library.so"
 }
 
 case "$mode" in
@@ -53,9 +50,11 @@ case "$mode" in
         for library in libgomp.a libquadmath.a libgfortran.a libcaf_single.a; do
             copy_file "$native/usr" "$library" /usr/lib
         done
-        runtime_link libgomp /lib
-        runtime_link libquadmath /lib
-        runtime_link libgfortran /usr/lib
+        link_library libgomp
+        link_library libgfortran
+        # The official gcc dependency already owns the linkable Quadmath DSO.
+        # Do not duplicate it or point at /lib's sstripped runtime.
+        ln -s "gcc/$triple/$version/libquadmath.so" "$dest/usr/lib/libquadmath.so"
         ;;
     compiler)
         install -d "$dest/usr/bin" "$dest$gccdir"

@@ -111,7 +111,8 @@ IPv6 和 WireGuard 的翻译归入 [LuCI base 翻译目录](https://github.com/o
 2. 编译动态链接的 Fortran/OpenMP/REAL(16) 测试，通过工具链自带的 musl 加载器和库目录运行，检查工具链头文件、runtime 和 `.mod` 文件。
 3. 准备 SDK 所需 target/package 环境，导出 SDK，再解压为独立目录验证。
 4. 在导出的 SDK 中构建 core runtime 与 native GCC 的两个附加包。
-5. 按 APK 元数据确认包名、版本与架构，解包检查关键文件、开发链接及本机可执行文件架构。
+5. 按 APK 元数据确认包名、版本与架构，解包检查关键文件、开发链接、本机可执行文件架构及链接用 ELF 的节表。
+6. 将五个 APK 与官方 GCC / binutils 安装到独立根目录，在 chroot 中使用本机编译器完成 Fortran/OpenMP/REAL(16) 与 C/OpenMP/Quadmath 测试，并检查动态依赖。
 
 SDK 准备阶段会构建其所需内核和模块，目的是完成 SDK staging；这些文件不会进入第一个任务生成的固件。
 
@@ -129,7 +130,11 @@ gcc-fortran-dev-*.apk
 gfortran-*.apk
 ```
 
-`libquadmath` 是 Kconfig/recipe 名，APK 名是 `libquadmath1`。`finclude/` 从定制 SDK 的 cross 工具链复制，遵循本地已验证的做法。其他头文件、静态库和本机可执行文件来自 native GCC 安装目录。具体补丁见 `patches/fortran/README.md`。
+`libquadmath` 是 Kconfig/recipe 名，APK 名是 `libquadmath1`。`finclude/` 和链接用目标架构共享库从定制 SDK 的 cross 工具链复制；头文件、静态库和本机可执行文件来自 native GCC 安装目录。具体补丁见 `patches/fortran/README.md`。
+
+`gcc-fortran-dev` / `gfortran` 的 r8 修复了 r7 的链接问题：原来的 `.so` 开发链接指向 `sstrip` 删除了 ELF 节表的运行库，文件虽存在，`ld` 却报 `file in wrong format`。现在在 GCC 私有目录提供保留节表的 `libgfortran.so`、`libgomp.so`，并将 `/usr/lib/` 的开发链接指向它们；Quadmath 复用官方 GCC 的链接用库。三个 runtime APK 保持 r5，已有安装只需升级两个 r8 附加包。
+
+安装测试用官方软件源下载 GCC 和依赖，记录所用仓库与已安装包版本到 `metadata/fortran-test-repositories.list`、`metadata/fortran-installed-packages.txt`；通过后生成 `metadata/fortran-install-audit.json`。测试关闭包安装脚本，在隔离目录内直接检查编译器工作情况，不添加 SDK 库搜索路径。执行完整 Fortran 构建需要 root 或可无交互调用的 sudo，以运行 chroot 测试。
 
 保留 OpenWrt 官方 `gcc`/binutils 环境。构建过程会因依赖生成其他包，但 Fortran 任务只交付上述五个 APK，不交付修改后的 `gcc` 包。
 
@@ -267,7 +272,7 @@ Fortran 产物还附带本机验证程序。将 `tests/` 一起复制到 OpenWrt
 sh tests/run-on-openwrt.sh
 ```
 
-此测试在 OpenWrt 本机用 `gfortran` 和 `gcc` 编译、运行 OpenMP 与 Quadmath 示例。它与 runner 上的 cross 工具链测试分别验证两个阶段。
+此测试先检查 `gfortran` / `gcc` 能找到带 `.dynsym` 节的开发库，再编译、运行 OpenMP 与 Quadmath 示例，并确认程序动态依赖 Fortran / OpenMP / Quadmath 运行库。runner 在隔离安装环境中执行同一测试；它与 cross 工具链测试分别验证 SDK 和最终 APK 两个阶段。
 
 ## 本地检查与构建
 

@@ -1,6 +1,6 @@
 # Fortran 补丁说明
 
-原始本地修改后的 Makefile 未保留。本目录根据仓库 `Build.md` 中已验证的编译选项与文件布局重建；补丁基于 `config/sources.lock.json` 指定的官方源文件，尚未完成 GitHub 整链编译验证。
+原始本地修改后的 Makefile 未保留。本目录根据仓库 `Build.md` 重建，补丁基于 `config/sources.lock.json` 指定的官方源文件。r7 已完成 GitHub 编译；设备测试发现运行库经 `sstrip` 后不能作为链接输入，r8 为开发包增加独立的链接用共享库，并扩展打包后验证。
 
 | 补丁 | 应用位置 | 作用 |
 | --- | --- | --- |
@@ -8,10 +8,14 @@
 | `openwrt/002-install-libgomp.patch` | OpenWrt 源码 | 补齐 internal toolchain 的 libgomp 安装规则，随 SDK 导出 |
 | `packages/001-native-gfortran.patch` | 定制 SDK 的 `feeds/packages` | native GCC 启用 Fortran、OpenMP、Quadmath，并新增两个附加包 |
 
-native 补丁调用 `scripts/install-fortran-files.sh`；构建入口自动将该脚本复制到 GCC recipe 的 `files/`。它只从 native GCC 安装目录提取本机程序、头文件、specs 和静态库；`finclude` 从同版本 cross 工具链复制，避免本地记录中的 `.mod` 缺失问题。
+native 补丁调用 `scripts/install-fortran-files.sh`；构建入口自动将该脚本复制到 GCC recipe 的 `files/`。本机程序、头文件、specs 和静态库从 native GCC 安装目录提取；`finclude` 和链接用的目标架构共享库从同版本 cross 工具链复制。
 
-安装布局遵循原始记录：头文件和 specs 在 `/usr/lib/gcc/<triple>/<version>/` 下；静态库与开发链接在 `/usr/lib/`。开发链接从 runtime ELF 的 SONAME 生成，避免把 `libquadmath1` 的包名误当成 `libquadmath.so.1`。
+头文件和 specs 在 `/usr/lib/gcc/<triple>/<version>/` 下，静态库位于 `/usr/lib/`。`gcc-fortran-dev` 在 GCC 私有目录安装 `libgfortran.so`、`libgomp.so` 两个真实 ELF 文件，保留节表；该 recipe 已使用 GNU `strip`，不会像 core runtime 的 `sstrip` 那样删除节表。`/usr/lib/` 下的同名开发链接指向这两个文件。Quadmath 的开发链接指向官方 GCC 已提供的私有库，不重复占有它。
+
+不能让开发链接指向 `/lib`、`/usr/lib` 中经 `sstrip` 处理的运行库：这种 ELF 仍可被动态加载器加载，但链接器会报 `file in wrong format`。运行时依然通过 SONAME 使用 `libgfortran`、`libgomp`、`libquadmath1` APK 中的库。此次仅提升两个 native 附加包到 `14.3.0-r8`；三个运行库仍为 `14.3.0-r5`。
 
 导出的五个包由官方 core runtime 加上 `gcc-fortran-dev`、`gfortran` 组成；本任务不会发布重编的 `gcc`。升版时必须复核官方 GCC 包的文件归属，避免新增开发文件与官方包发生冲突。
 
-构建先检查补丁能否应用，再检查工具链和导出 APK 的关键文件。`tests/test_fortran_install.py` 在 Linux 上验证安装脚本、ELF SONAME 链接，以及文件缺失/重复时明确失败。
+构建先检查补丁能否应用，再检查工具链和导出 APK。文件审计现在要求链接用 ELF 为 x86_64 共享库，且保留节表和动态符号节。Linux 回归测试模拟 `sstrip` 删除节表，验证旧运行库链接失败、独立开发库链接成功。
+
+最后通过 `apk add` 将五个 APK 与官方 GCC、binutils、base-files 安装到独立根目录，检查文件归属和依赖，在 chroot 中运行交付的本机 `gfortran` / 官方 `gcc`。测试不添加 `-L` 或修复库链接，同时验证 Fortran/OpenMP/REAL(16)、C/OpenMP/Quadmath 及最终程序的动态依赖。隔离安装关闭包脚本，不启动路由服务；此检查覆盖编译器安装与链接，不替代设备上的服务测试。本地 Linux 执行时需 root 或可无交互调用的 sudo，用于 chroot 和创建 `/dev/null`。

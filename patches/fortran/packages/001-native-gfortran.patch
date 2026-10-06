@@ -1,5 +1,12 @@
 --- a/devel/gcc/Makefile
 +++ b/devel/gcc/Makefile
+@@ -24,5 +24,5 @@
+ GCC_VERSION:=$(call qstrip,$(CONFIG_GCC_VERSION))
+ PKG_VERSION:=$(firstword $(subst +, ,$(GCC_VERSION)))
+ GCC_MAJOR_VERSION:=$(word 1,$(subst ., ,$(PKG_VERSION)))
+-PKG_RELEASE:=7
++PKG_RELEASE:=8
+ GCC_DIR:=$(PKG_NAME)-$(PKG_VERSION)
 @@ -93,7 +93,7 @@
  	REMOVE_STATIC_SPEC=rm /usr/lib/$(PKG_NAME)/$(REAL_GNU_TARGET_NAME)/$(PKG_VERSION)/specs
  endif

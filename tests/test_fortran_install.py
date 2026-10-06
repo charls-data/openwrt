@@ -1,5 +1,6 @@
 """Exercise real install commands against a small synthetic GCC install tree."""
 from pathlib import Path
+import importlib.util
 import shutil
 import subprocess
 import sys
@@ -7,6 +8,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("build", ROOT / "scripts/build.py")
+build = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(build)
 TRIPLE = "x86_64-openwrt-linux-musl"
 VERSION = "14.3.0"
 
@@ -50,12 +54,41 @@ class InstallerTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
         return dest
 
-    def test_runtime_links_follow_elf_sonames(self):
+    def test_development_links_use_linkable_copies_not_runtime_dsos(self):
         dest = self.install("dev")
-        self.assertEqual((dest / "usr/lib/libquadmath.so").readlink().as_posix(), "../../lib/libquadmath.so.0")
-        self.assertEqual((dest / "usr/lib/libgfortran.so").readlink().as_posix(), "libgfortran.so.5")
+        for name in ["libgomp", "libgfortran", "libquadmath"]:
+            self.assertEqual((dest / f"usr/lib/{name}.so").readlink().as_posix(),
+                             f"gcc/{TRIPLE}/{VERSION}/{name}.so")
+        for name in ["libgomp", "libgfortran"]:
+            path = dest / self.gccdir / f"{name}.so"
+            self.assertFalse(path.is_symlink())
+            build.linkable_elf(path)
+        # Official gcc supplies this file; the add-on must not own it as well.
+        self.assertFalse((dest / self.gccdir / "libquadmath.so").exists())
         self.assertTrue((dest / self.gccdir / "include/omp.h").is_file())
         self.assertTrue((dest / "usr/lib/libcaf_single.a").is_file())
+
+    def test_linking_works_when_runtime_has_no_section_table(self):
+        dest = self.install("dev")
+        source = self.root / "probe.c"
+        source.write_text("extern int placeholder; int main(void) { return placeholder; }\n")
+        for name, soname in [("libgfortran", "libgfortran.so.5"), ("libgomp", "libgomp.so.1")]:
+            with self.subTest(library=name):
+                # Reproduce sstrip's removed ELF64 section-header fields. The
+                # program headers and dynamic loader data remain untouched.
+                runtime = self.root / f"runtime-{name}.so"
+                data = bytearray((self.tc / "lib" / soname).read_bytes())
+                data[40:48] = bytes(8)
+                data[58:64] = bytes(6)
+                runtime.write_bytes(data)
+                with self.assertRaisesRegex(ValueError, "Missing ELF section table"):
+                    build.linkable_elf(runtime)
+                broken = subprocess.run(["cc", str(source), str(runtime), "-o", str(self.root / "bad")],
+                                        capture_output=True, text=True)
+                self.assertNotEqual(broken.returncode, 0)
+                linked = subprocess.run(["cc", str(source), f"-L{dest / 'usr/lib'}", f"-l{name[3:]}",
+                                         "-o", str(self.root / "good")], capture_output=True, text=True)
+                self.assertEqual(linked.returncode, 0, linked.stderr)
 
     def test_compiler_contains_toolchain_fortran_modules(self):
         dest = self.install("compiler")

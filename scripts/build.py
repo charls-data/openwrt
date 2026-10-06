@@ -11,6 +11,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 import tomllib
@@ -203,6 +204,25 @@ def adapt_luci_makefile(text, version):
 def digest(path):
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def linkable_elf(path):
+    """Reject x86_64 runtime DSOs whose section table was removed by sstrip."""
+    with path.open("rb") as stream:
+        header = stream.read(64)
+        require(len(header) == 64 and header[:7] == b"\x7fELF\x02\x01\x01",
+                f"Expected a little-endian ELF64 link-time library: {path}")
+        fields = struct.unpack("<16sHHIQQQIHHHHHH", header)
+        require(fields[1:3] == (3, 62), f"Expected an x86_64 shared library: {path}")
+        offset, entry_size, count = fields[6], fields[11], fields[12]
+        require(offset >= 64 and entry_size == 64 and count > 0,
+                f"Missing ELF section table (sstripped runtime cannot be used for linking): {path}")
+        require(offset + entry_size * count <= path.stat().st_size, f"Truncated ELF section table: {path}")
+        stream.seek(offset)
+        sections = stream.read(entry_size * count)
+        require(any(struct.unpack_from("<I", sections, i * entry_size + 4)[0] == 11 for i in range(count)),
+                f"Missing ELF dynamic symbol section: {path}")
+    return {"machine": "x86_64", "section_count": count, "sha256": digest(path)}
 
 
 def write_json(path, data):
@@ -560,14 +580,68 @@ class Build:
         expected = ["usr/bin/gfortran", "usr/bin/x86_64-openwrt-linux-musl-gfortran", f"{base}/f951",
                     f"{base}/include/ISO_Fortran_binding.h", f"{base}/finclude/omp_lib.mod", f"{base}/finclude/openacc.mod",
                     *[f"{base}/include/{name}" for name in ["omp.h", "openacc.h", "quadmath.h", "quadmath_weak.h"]],
-                    *[f"usr/lib/{name}" for name in ["libgomp.a", "libquadmath.a", "libgfortran.a", "libcaf_single.a", "libgomp.so", "libquadmath.so", "libgfortran.so"]],
+                    *[f"usr/lib/{name}" for name in ["libgomp.a", "libquadmath.a", "libgfortran.a", "libcaf_single.a", "libgomp.so", "libgfortran.so"]],
+                    f"{base}/libgomp.so", f"{base}/libgfortran.so",
                     f"{base}/libgomp.spec", f"{base}/libgfortran.spec"]
         for name in expected:
             require((root / name).exists(), f"Missing file or broken link in Fortran APKs: {name}")
         for executable in [root / "usr/bin/gfortran", root / base / "f951"]:
             info = self.run("readelf", "-h", executable, capture=True)
             require("Advanced Micro Devices X86-64" in info, f"Wrong native executable architecture: {executable}")
-        write_json(self.out / "metadata/fortran-file-audit.json", {"required_files": expected, "passed": True})
+        link_libraries = {}
+        for library in ["libgomp", "libgfortran", "libquadmath"]:
+            link = root / f"usr/lib/{library}.so"
+            target = f"gcc/x86_64-openwrt-linux-musl/{version}/{library}.so"
+            require(link.is_symlink() and os.readlink(link) == target, f"Incorrect link-time library link: {link}")
+            if library != "libquadmath":
+                path = root / base / f"{library}.so"
+                require(not path.is_symlink(), f"Link-time DSO must not point at a stripped runtime: {path}")
+                link_libraries[library] = linkable_elf(path)
+        # Quadmath's linkable copy belongs to official gcc. Verify it together
+        # with the installed compiler, rather than borrowing files from the SDK.
+        write_json(self.out / "metadata/fortran-file-audit.json", {
+            "required_files": expected, "link_libraries": link_libraries, "passed": True})
+        self.audit_fortran_install(sdk, selected, version)
+
+    def audit_fortran_install(self, sdk, selected, version):
+        root = self.work / "fortran-installed"
+        root.mkdir()
+        apk = sdk / "staging_dir/host/bin/apk"
+        release = self.cfg["openwrt"]["release"]
+        repositories = self.out / "metadata/fortran-test-repositories.list"
+        repositories.write_text("\n".join([
+            f"https://downloads.openwrt.org/releases/{release}/targets/x86/64/packages/packages.adb",
+            f"https://downloads.openwrt.org/releases/{release}/packages/x86_64/base/packages.adb",
+            f"https://downloads.openwrt.org/releases/{release}/packages/x86_64/packages/packages.adb",
+        ]) + "\n", encoding="utf-8")
+        # apk add checks ownership/dependencies, unlike extracting all APKs on
+        # top of one another. Do not run firmware service/postinstall scripts.
+        usermode = ["--usermode"] if os.geteuid() != 0 else []
+        self.run(apk, "--root", root, "--arch", "x86_64", "--repositories-file", repositories,
+                 "--allow-untrusted", "--no-scripts", "--no-cache", "add", "--initdb", *usermode,
+                 "base-files", f"gcc~{version}", "binutils", *selected.values())
+        inventory = self.run(apk, "--root", root, "info", "-v", capture=True)
+        (self.out / "metadata/fortran-installed-packages.txt").write_text(inventory, encoding="utf-8")
+        base = root / f"usr/lib/gcc/x86_64-openwrt-linux-musl/{version}"
+        for library in ["libgomp", "libgfortran", "libquadmath"]:
+            linkable_elf(base / f"{library}.so")
+        tests = root / "tmp/fortran-tests"
+        tests.mkdir(parents=True, exist_ok=True)
+        for name in ["fortran-openmp.f90", "openmp-quadmath.c", "run-on-openwrt.sh"]:
+            shutil.copy2(ROOT / "tests" / name, tests)
+        privilege = [] if os.geteuid() == 0 else ["sudo", "-n"]
+        device = root / "dev/null"
+        device.parent.mkdir(exist_ok=True)
+        if not device.exists():
+            self.run(*privilege, "mknod", "-m", "666", device, "c", "1", "3")
+        # No host library/include paths, extra -L flags, or repaired symlinks.
+        self.run(*privilege, "chroot", root, "/bin/busybox", "env", "-i",
+                 "PATH=/usr/bin:/bin", "HOME=/tmp", "TMPDIR=/tmp", "LC_ALL=C",
+                 "/bin/sh", "/tmp/fortran-tests/run-on-openwrt.sh")
+        write_json(self.out / "metadata/fortran-install-audit.json", {
+            "gcc_version": version, "official_release": release, "package_scripts": False,
+            "tests": ["Fortran/OpenMP/REAL(16)", "C/OpenMP/Quadmath", "ELF dynamic dependencies"],
+            "passed": True})
 
     def finish(self):
         lines = []
